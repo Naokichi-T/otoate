@@ -5,7 +5,7 @@
 	  /play/listen … 「聴く」モード（鳴った音を聴いて答える）
 
 	画面の並び
-	- 上：やめるリンク・残り時間・スコア（スコアはステップ4で動かす）
+	- 上：やめるリンク・残り時間・スコア
 	- その下：5秒ゲージ
 	- まん中：問題を出す場所（読む＝五線譜と音符、聴く＝もう一度ボタン）
 	- 下：ド〜シの7つのボタン
@@ -20,6 +20,11 @@
 	- 正しいボタン → ボタンが0.2秒緑に光って、すぐ次の問題へ（ゲージは満タンに戻る）
 	- ちがうボタン → ボタンと音符が0.2秒赤に光って、お手つき＋1（同じ問題のまま、ゲージも戻らない）
 	- 5秒ゲージが0になっても次へは進まない（空のまま答えを待つ）
+
+	点数（計算の決まりは src/lib/score.js）
+	- 正解するたびに 10点 ＋ ゲージの残り秒数 × 2点（四捨五入して整数）
+	- 反応時間 ＝ 問題が出てから正解を押すまで（お手つきで迷った時間も含む）
+	- 結果のカードに、スコア・正解の数・平均反応速度・お手つきの数を出す
 -->
 <script>
   import { onMount } from "svelte";
@@ -27,12 +32,13 @@
   import { NOTE_BUTTONS, ALL_NOTES, findMode, pickNextNote } from "../../../lib/notes.js";
   import Staff from "../../../lib/Staff.svelte";
   import SpeakerIcon from "../../../lib/icons/SpeakerIcon.svelte";
+  import { THINK_SECONDS, calcPoints, averageSeconds, formatSeconds } from "../../../lib/score.js";
 
   // ------------------------------------------------------------
   // 時間の決まり
   // ------------------------------------------------------------
   const GAME_SECONDS = 60; // 1回のゲームの制限時間（秒）。30秒にしたいときはここを 30 にする
-  const THINK_SECONDS = 5; // 1問ごとの5秒ゲージの長さ（秒）
+  // 1問ごとの5秒ゲージの長さ（THINK_SECONDS）は、点数の計算にも使うので score.js に置いている
   const COUNTDOWN_FROM = 3; // スタート前に数える数（3・2・1）
   const WARNING_SECONDS = 5; // 残り時間がこの秒数以下になったら赤い文字にする
   const FLASH_MS = 200; // ボタンが緑・赤に光っている時間（ミリ秒）
@@ -54,9 +60,19 @@
   /** @type {import("../../../lib/notes.js").QuizNote | null} */
   let currentNote = $state(null);
 
-  // 正解した数とお手つきの数（ステップ4で、スコアや結果画面に使う）
+  // 正解した数とお手つきの数
   let correctCount = $state(0);
   let missCount = $state(0);
+
+  // スコア（合計点）
+  let score = $state(0);
+
+  // 正解したときの反応時間のリスト（ミリ秒）。結果のカードで平均を出すのに使う
+  /** @type {number[]} */
+  let reactionTimes = $state([]);
+
+  // 平均反応速度（画面に出す文字。例："1.23"、正解が0問なら "—"）
+  let averageText = $derived(formatSeconds(averageSeconds(reactionTimes)));
 
   // ------------------------------------------------------------
   // 時間を測るための時刻（すべて performance.now() のミリ秒）
@@ -107,6 +123,8 @@
     // 前のゲームの結果を消す
     correctCount = 0;
     missCount = 0;
+    score = 0;
+    reactionTimes = [];
     currentNote = null;
 
     phase = "countdown";
@@ -196,7 +214,10 @@
     if (phase !== "playing" || !currentNote) return;
 
     if (button.id === currentNote.letter) {
-      // 正解：ボタンだけ緑に光らせて、すぐ次の問題へ（音符は黒のまま）
+      // 正解：反応時間を記録して点数を足し、ボタンだけ緑に光らせて、すぐ次の問題へ（音符は黒のまま）
+      const reactionMs = performance.now() - questionStartedAt;
+      reactionTimes.push(reactionMs);
+      score += calcPoints(reactionMs);
       correctCount++;
       showFlash(button.id, "ok");
       nextQuestion();
@@ -244,7 +265,7 @@
       </div>
       <div class="status-item">
         <span class="status-label">スコア</span>
-        <span class="status-value score">0</span>
+        <span class="status-value score">{score}</span>
       </div>
     </header>
 
@@ -258,10 +279,17 @@
       <section class="result">
         <div class="result-card">
           <h2>おしまい！</h2>
+          <!-- スコアはいちばん上に大きく出す -->
+          <p class="result-score-label">スコア</p>
+          <p class="result-score">{score}</p>
           <dl class="result-list">
             <div class="result-row">
               <dt>正解</dt>
               <dd>{correctCount}<small>問</small></dd>
+            </div>
+            <div class="result-row">
+              <dt>平均反応速度</dt>
+              <dd>{averageText}<small>秒</small></dd>
             </div>
             <div class="result-row">
               <dt>お手つき</dt>
@@ -307,11 +335,6 @@
             </button>
           {/if}
         </div>
-
-        <!-- 確認用の表示（ステップ4でスコアなどの表示ができたら消す） -->
-        <p class="debug">
-          （確認用）問題：{currentNote?.label ?? "—"}　正解 {correctCount}　お手つき {missCount}
-        </p>
       </section>
 
       <!-- ===== 下のドレミのボタン（7つを横1列に並べる） ===== -->
@@ -495,13 +518,6 @@
     transform: scale(0.96);
   }
 
-  /* 確認用の文字 */
-  .debug {
-    margin: 0;
-    font-size: 0.85rem;
-    color: var(--sub);
-  }
-
   /* ===== 下のドレミのボタン ===== */
   .answers {
     display: grid;
@@ -584,6 +600,21 @@
   .result-card h2 {
     margin: 0 0 16px;
     font-size: 1.6rem;
+  }
+
+  /* スコア：いちばん大きく、オレンジ */
+  .result-score-label {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--sub);
+  }
+  .result-score {
+    margin: 0 0 12px;
+    font-size: 3.2rem;
+    font-weight: bold;
+    line-height: 1.1;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
   }
 
   /* 結果の一覧：左に項目名、右に数字 */
