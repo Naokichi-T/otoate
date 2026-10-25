@@ -5,12 +5,15 @@
 	- 五線・加線・棒（符幹）は SVG の線で描く
 	- 音の高さは note.step（ド0 から数えた白鍵の番号）で決まる
 
-	使い方の例：<Staff note={currentNote} />
+	- highlight で音符（符頭・棒・加線）を緑（"ok"）や赤（"ng"）にできる
+
+	使い方の例：<Staff note={currentNote} highlight="ok" />
 -->
 <script>
-  // note … 描く音（notes.js の QuizNote）。null のときは五線とト音記号だけ描く
-  /** @type {{ note: import("./notes.js").QuizNote | null }} */
-  let { note } = $props();
+  // note      … 描く音（notes.js の QuizNote）。null のときは五線とト音記号だけ描く
+  // highlight … 音符の色。"ok" なら緑、"ng" なら赤、null（指定なし）なら黒のまま
+  /** @type {{ note: import("./notes.js").QuizNote | null, highlight?: "ok" | "ng" | null }} */
+  let { note, highlight = null } = $props();
 
   // ------------------------------------------------------------
   // 大きさの決まり
@@ -111,20 +114,26 @@
   <text class="glyph" x={CLEF_X} y={stepToY(BOTTOM_STEP + 2)} font-size={FONT_SIZE}>{GLYPH_G_CLEF}</text>
 
   {#if note}
-    <!-- 加線（五線の外の音のときだけ） -->
-    {#each ledgerYs as y (y)}
-      <line x1={NOTE_X - LEDGER_EXTENSION} x2={NOTE_X + NOTEHEAD_WIDTH + LEDGER_EXTENSION} y1={y} y2={y} stroke-width={LEDGER_WIDTH} />
-    {/each}
+    <!--
+			音符（加線・棒・符頭）をまとめるグループ
+			class:ok / class:ng … highlight に合わせて、グループごと緑や赤にする
+		-->
+    <g class="note" class:ok={highlight === "ok"} class:ng={highlight === "ng"}>
+      <!-- 加線（五線の外の音のときだけ） -->
+      {#each ledgerYs as y (y)}
+        <line x1={NOTE_X - LEDGER_EXTENSION} x2={NOTE_X + NOTEHEAD_WIDTH + LEDGER_EXTENSION} y1={y} y2={y} stroke-width={LEDGER_WIDTH} />
+      {/each}
 
-    <!-- 棒（符幹）：上向きなら符頭の右はしから上へ、下向きなら左はしから下へ -->
-    {#if stemUp}
-      <line x1={NOTE_X + NOTEHEAD_WIDTH - STEM_WIDTH / 2} x2={NOTE_X + NOTEHEAD_WIDTH - STEM_WIDTH / 2} y1={noteY - STEM_ATTACH_Y} y2={noteY - STEM_LENGTH} stroke-width={STEM_WIDTH} />
-    {:else}
-      <line x1={NOTE_X + STEM_WIDTH / 2} x2={NOTE_X + STEM_WIDTH / 2} y1={noteY + STEM_ATTACH_Y} y2={noteY + STEM_LENGTH} stroke-width={STEM_WIDTH} />
-    {/if}
+      <!-- 棒（符幹）：上向きなら符頭の右はしから上へ、下向きなら左はしから下へ -->
+      {#if stemUp}
+        <line x1={NOTE_X + NOTEHEAD_WIDTH - STEM_WIDTH / 2} x2={NOTE_X + NOTEHEAD_WIDTH - STEM_WIDTH / 2} y1={noteY - STEM_ATTACH_Y} y2={noteY - STEM_LENGTH} stroke-width={STEM_WIDTH} />
+      {:else}
+        <line x1={NOTE_X + STEM_WIDTH / 2} x2={NOTE_X + STEM_WIDTH / 2} y1={noteY + STEM_ATTACH_Y} y2={noteY + STEM_LENGTH} stroke-width={STEM_WIDTH} />
+      {/if}
 
-    <!-- 符頭（黒い丸） -->
-    <text class="glyph" x={NOTE_X} y={noteY} font-size={FONT_SIZE}>{GLYPH_NOTEHEAD}</text>
+      <!-- 符頭（黒い丸） -->
+      <text class="glyph" x={NOTE_X} y={noteY} font-size={FONT_SIZE}>{GLYPH_NOTEHEAD}</text>
+    </g>
   {/if}
 </svg>
 
@@ -146,5 +155,21 @@
   .glyph {
     font-family: "Bravura";
     fill: var(--ink);
+  }
+
+  /* 正解のとき：音符（線も文字も）を緑にする */
+  .note.ok line {
+    stroke: var(--ok);
+  }
+  .note.ok .glyph {
+    fill: var(--ok);
+  }
+
+  /* お手つきのとき：音符を赤にする */
+  .note.ng line {
+    stroke: var(--ng);
+  }
+  .note.ng .glyph {
+    fill: var(--ng);
   }
 </style>
