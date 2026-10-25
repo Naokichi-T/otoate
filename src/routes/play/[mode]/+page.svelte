@@ -4,46 +4,111 @@
 	  /play/read   … 「読む」モード（五線譜の音符を見て答える）
 	  /play/listen … 「聴く」モード（鳴った音を聴いて答える）
 
-	ステップ1では画面の骨組みだけを作る
-	- 上：やめるリンク・残り時間・スコア（数字はまだ固定）
-	- その下：5秒ゲージ（まだ動かない）
-	- まん中：問題を出す場所（読む＝五線譜の場所、聴く＝もう一度ボタン）
-	- 下：ド〜シの7つのボタン（押すと、押したボタンの名前を表示するだけ）
+	画面の並び
+	- 上：やめるリンク・残り時間・スコア（数字はステップ3・4で動かす）
+	- その下：5秒ゲージ（ステップ3で動かす）
+	- まん中：問題を出す場所（読む＝五線譜と音符、聴く＝もう一度ボタン）
+	- 下：ド〜シの7つのボタン
+
+	ステップ2でできること
+	- ソ3〜ド6 の中からランダムに問題を出す（直前と同じ音は出さない）
+	- 正しいボタン → ボタンが緑に光って、すぐ次の問題へ
+	- ちがうボタン → ボタンが赤に光って、お手つき＋1（同じ問題のまま）
 -->
 <script>
+  import { onMount } from "svelte";
   import { page } from "$app/state";
-  import { NOTE_BUTTONS, findMode } from "../../../lib/notes.js";
+  import { NOTE_BUTTONS, ALL_NOTES, findMode, pickNextNote } from "../../../lib/notes.js";
+  import Staff from "../../../lib/Staff.svelte";
   import SpeakerIcon from "../../../lib/icons/SpeakerIcon.svelte";
+
+  // ボタンが緑・赤に光っている時間（ミリ秒）
+  const FLASH_MS = 200;
 
   // URL の [mode] の部分から、今のモードの情報を探す
   // まちがった URL（/play/abc など）のときは null になる
   let mode = $derived(findMode(page.params.mode));
 
-  // 最後に押したボタン（ボタンが反応しているかを確かめるための仮の表示）
-  // 最初は null（まだ何も押していない）。押すと NoteButton のデータが入る
-  // 「@type」で入るデータの形を VSCode に教えておく（書かないと赤い波線が出る）
-  /** @type {import("../../../lib/notes.js").NoteButton | null} */
-  let lastPressed = $state(null);
+  // 今の問題の音（最初はまだ決まっていないので null）
+  /** @type {import("../../../lib/notes.js").QuizNote | null} */
+  let currentNote = $state(null);
+
+  // 正解した数とお手つきの数（ステップ4で、スコアや結果画面に使う）
+  let correctCount = $state(0);
+  let missCount = $state(0);
+
+  // 光らせているボタン
+  //   id   : 光らせるボタンの id（"C" など）
+  //   kind : "ok"（正解・緑）か "ng"（お手つき・赤）
+  /** @type {{ id: string, kind: "ok" | "ng" } | null} */
+  let flash = $state(null);
+
+  // 光を消すタイマーの番号（続けて押されたとき、前のタイマーを止めるために覚えておく）
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let flashTimer;
+
+  // ------------------------------------------------------------
+  // nextQuestion()
+  // 次の問題の音を選んで、画面に出す関数
+  // ------------------------------------------------------------
+  function nextQuestion() {
+    currentNote = pickNextNote(ALL_NOTES, currentNote);
+  }
+
+  // ------------------------------------------------------------
+  // showFlash(id, kind)
+  // 押したボタンを、少しのあいだ緑（正解）か赤（お手つき）に光らせる関数
+  // ------------------------------------------------------------
+  /**
+   * @param {string} id 光らせるボタンの id
+   * @param {"ok" | "ng"} kind 正解なら "ok"、お手つきなら "ng"
+   */
+  function showFlash(id, kind) {
+    clearTimeout(flashTimer); // 前の光がまだ残っていたら、そのタイマーは止める
+    flash = { id, kind };
+    flashTimer = setTimeout(() => {
+      flash = null;
+    }, FLASH_MS);
+  }
 
   // ------------------------------------------------------------
   // handleAnswer(button)
   // 下のドレミのボタンが押されたときに呼ばれる関数
-  // ステップ1では、押したボタンを覚えて画面に出すだけ
-  // （ステップ2で、ここに正解・お手つきの判定を入れる）
+  // 押したボタンの音名と、今の問題の音名が同じなら正解
+  // （オクターブは見ない。ソ3 でも ソ5 でも「ソ」を押せば正解）
   // ------------------------------------------------------------
   /** @param {import("../../../lib/notes.js").NoteButton} button 押されたボタンのデータ */
   function handleAnswer(button) {
-    lastPressed = button;
+    if (!currentNote) return; // 問題がまだ出ていないときは何もしない
+
+    if (button.id === currentNote.letter) {
+      // 正解：緑に光らせて、すぐ次の問題へ
+      correctCount++;
+      showFlash(button.id, "ok");
+      nextQuestion();
+    } else {
+      // お手つき：赤に光らせて、お手つきを数える（問題はそのまま）
+      missCount++;
+      showFlash(button.id, "ng");
+    }
   }
 
   // ------------------------------------------------------------
   // handleReplay()
-  // 「聴く」モードの「🔈 もう一度」ボタンが押されたときに呼ばれる関数
+  // 「聴く」モードの「もう一度」ボタンが押されたときに呼ばれる関数
   // ステップ6で、ここに音を鳴らす処理を入れる（今は何もしない）
   // ------------------------------------------------------------
   function handleReplay() {
     // まだ何もしない
   }
+
+  // 画面が表示されたら、最初の問題を出す
+  // （ランダムに選ぶので、ブラウザで表示されてから選ぶ）
+  onMount(() => {
+    nextQuestion();
+    // 画面を離れるときに、光を消すタイマーが残っていたら止める
+    return () => clearTimeout(flashTimer);
+  });
 </script>
 
 <svelte:head>
@@ -73,8 +138,8 @@
     <!-- ===== 問題を出す場所 ===== -->
     <section class="question">
       {#if mode.id === "read"}
-        <!-- 「読む」：ステップ2でここに五線譜と音符を描く -->
-        <div class="staff-placeholder">（ここに五線譜と音符）</div>
+        <!-- 「読む」：五線譜に今の問題の音符を描く -->
+        <Staff note={currentNote} />
       {:else}
         <!-- 「聴く」：もう一度鳴らすボタン -->
         <button class="replay" type="button" onclick={handleReplay}>
@@ -83,16 +148,20 @@
         </button>
       {/if}
 
-      <!-- 押したボタンの確認用（ステップ2で消す） -->
+      <!-- 確認用の表示（ステップ4でスコアなどの表示ができたら消す） -->
       <p class="debug">
-        押したボタン：{lastPressed ? `${lastPressed.name}（${lastPressed.letter}）` : "まだなし"}
+        （確認用）問題：{currentNote?.label ?? "—"}　正解 {correctCount}　お手つき {missCount}
       </p>
     </section>
 
     <!-- ===== 下のドレミのボタン（7つを横1列に並べる） ===== -->
     <nav class="answers">
       {#each NOTE_BUTTONS as button (button.id)}
-        <button class="answer" type="button" onclick={() => handleAnswer(button)}>
+        <!--
+					光らせているボタンには、ok（緑）か ng（赤）のクラスを付ける
+					class:ok={条件} … 条件が true のときだけ「ok」というクラスが付く
+				-->
+        <button class="answer" class:ok={flash?.id === button.id && flash?.kind === "ok"} class:ng={flash?.id === button.id && flash?.kind === "ng"} type="button" onclick={() => handleAnswer(button)}>
           <span class="answer-name">{button.name}</span>
           <span class="answer-letter">{button.letter}</span>
         </button>
@@ -184,18 +253,6 @@
     padding: 16px;
   }
 
-  /* 五線譜の仮の場所 */
-  .staff-placeholder {
-    width: 100%;
-    height: 200px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 2px dashed var(--line);
-    border-radius: 12px;
-    color: var(--sub);
-  }
-
   /* 「🔈 もう一度」ボタン */
   .replay {
     /* アイコンと文字を横に並べる */
@@ -218,7 +275,7 @@
     transform: scale(0.96);
   }
 
-  /* 押したボタンの確認用の文字 */
+  /* 確認用の文字 */
   .debug {
     margin: 0;
     font-size: 0.85rem;
@@ -254,6 +311,23 @@
   .answer:active {
     transform: translateY(2px);
     box-shadow: none;
+  }
+  /* 正解のとき：緑に光る（文字は白） */
+  .answer.ok {
+    background: var(--ok);
+    border-color: var(--ok);
+    color: #ffffff;
+  }
+  /* お手つきのとき：赤に光る（文字は白） */
+  .answer.ng {
+    background: var(--ng);
+    border-color: var(--ng);
+    color: #ffffff;
+  }
+  /* 光っているときは、小さい英語の音名も白にする */
+  .answer.ok .answer-letter,
+  .answer.ng .answer-letter {
+    color: #ffffff;
   }
   .answer-name {
     font-size: 1.15rem;

@@ -2,6 +2,7 @@
 	+layout.svelte
 	すべてのページに共通する外枠
 	- ファビコン（ステップ7で音当て用の画像に差し替える）
+	- 楽譜用フォント Bravura の読み込み（五線譜のト音記号と音符に使う）
 	- アプリ全体の色・文字・余白の決まり（CSS）
 -->
 <script>
@@ -15,12 +16,28 @@
 
 <svelte:head>
   <link rel="icon" href={favicon} />
+  <!--
+		楽譜用フォントを先に読み込み始めておく（preload）
+		五線譜を表示したときに、ト音記号が一瞬「□」になるのを防ぐため
+	-->
+  <link rel="preload" href="/fonts/Bravura.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
 </svelte:head>
 
 <!-- 各ページの中身をここに表示する -->
 {@render children()}
 
 <style>
+  /* ------------------------------------------------------------
+	   楽譜用フォント Bravura（static/fonts/Bravura.woff2）
+	   font-display: block … 読み込みが終わるまで文字を出さずに待つ
+	   （ほかのフォントで「□」が表示されるのを防ぐ）
+	   ------------------------------------------------------------ */
+  @font-face {
+    font-family: "Bravura";
+    src: url("/fonts/Bravura.woff2") format("woff2");
+    font-display: block;
+  }
+
   /* ------------------------------------------------------------
 	   アプリ全体で使う色の決まり
 	   あとで色を変えたくなったら、ここだけ直せばよい
