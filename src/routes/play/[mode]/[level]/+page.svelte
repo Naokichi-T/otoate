@@ -1,8 +1,9 @@
 <!--
-	play/[mode]/+page.svelte（ゲーム画面）
-	URL の最後の部分でモードが決まる
-	  /play/read   … 「読む」モード（五線譜の音符を見て答える）
-	  /play/listen … 「聴く」モード（鳴った音を聴いて答える）
+	play/[mode]/[level]/+page.svelte（ゲーム画面）
+	URL の「/play/モード/レベル」でモードとレベルが決まる
+	  /play/read/1   … 「読む」Lv1（五線の中の音）
+	  /play/read/2   … 「読む」Lv2（加線の音もあり）
+	  /play/listen/1 … 「聴く」Lv1〜3（音を鳴らすのはステップ6）
 
 	画面の並び
 	- 上：やめるリンク・残り時間・スコア
@@ -24,15 +25,17 @@
 	点数（計算の決まりは src/lib/score.js）
 	- 正解するたびに 10点 ＋ ゲージの残り秒数 × 2点（四捨五入して整数）
 	- 反応時間 ＝ 問題が出てから正解を押すまで（お手つきで迷った時間も含む）
-	- 結果のカードに、スコア・正解の数・平均反応速度・お手つきの数を出す
+	- 結果のカードに、スコア・最高スコア・正解の数・平均反応速度・お手つきの数を出す
+	- 最高スコアを超えたら保存して「NEW!」を出す（保存のしかたは src/lib/best.js）
 -->
 <script>
   import { onMount } from "svelte";
   import { page } from "$app/state";
-  import { NOTE_BUTTONS, ALL_NOTES, findMode, pickNextNote } from "../../../lib/notes.js";
-  import Staff from "../../../lib/Staff.svelte";
-  import SpeakerIcon from "../../../lib/icons/SpeakerIcon.svelte";
-  import { THINK_SECONDS, calcPoints, averageSeconds, formatSeconds } from "../../../lib/score.js";
+  import { NOTE_BUTTONS, findMode, findLevel, pickNextNote } from "../../../../lib/notes.js";
+  import { getBestScore, saveBestScore } from "../../../../lib/best.js";
+  import Staff from "../../../../lib/Staff.svelte";
+  import SpeakerIcon from "../../../../lib/icons/SpeakerIcon.svelte";
+  import { THINK_SECONDS, calcPoints, averageSeconds, formatSeconds } from "../../../../lib/score.js";
 
   // ------------------------------------------------------------
   // 時間の決まり
@@ -53,6 +56,15 @@
   // まちがった URL（/play/abc など）のときは null になる
   let mode = $derived(findMode(page.params.mode));
 
+  // URL の [level] の部分から、今のレベルの情報を探す
+  // モードがまちがっているとき・レベルがまちがっているとき（/play/read/9 など）は null になる
+  let level = $derived(mode ? findLevel(mode, page.params.level) : null);
+
+  // 最高スコア（結果のカードに出す）と、今回が新記録だったか
+  /** @type {number | null} */
+  let bestScore = $state(null);
+  let isNewRecord = $state(false);
+
   // 今どの段階か（上のコメントの4つのどれか）
   // 「@type」を ("ready") の前に付けて、4つのどれかが入ることを VSCode に教えている
   // （書かないと、VSCode が「"ready" しか入らない」と思いこんでしまう）
@@ -63,7 +75,7 @@
   let countdown = $state(COUNTDOWN_FROM);
 
   // 今の問題の音（スタート前はまだ決まっていないので null）
-  /** @type {import("../../../lib/notes.js").QuizNote | null} */
+  /** @type {import("../../../../lib/notes.js").QuizNote | null} */
   let currentNote = $state(null);
 
   // 正解した数とお手つきの数
@@ -118,7 +130,8 @@
   // ------------------------------------------------------------
   function nextQuestion() {
     const minDistance = mode?.id === "read" ? READ_MIN_DISTANCE : LISTEN_MIN_DISTANCE;
-    currentNote = pickNextNote(ALL_NOTES, currentNote, minDistance);
+    // 出題する音は、レベルごとに決まっている（例：「読む」Lv1 は五線の中の9音）
+    currentNote = pickNextNote(level?.notes ?? [], currentNote, minDistance);
     questionStartedAt = performance.now();
   }
 
@@ -134,6 +147,7 @@
     score = 0;
     reactionTimes = [];
     currentNote = null;
+    isNewRecord = false;
 
     phase = "countdown";
     countdown = COUNTDOWN_FROM;
@@ -184,13 +198,19 @@
 
   // ------------------------------------------------------------
   // finishGame()
-  // 制限時間になったときに呼ばれる関数：時計を止めて結果を出す
+  // 制限時間になったときに呼ばれる関数：時計を止めて、最高スコアを確かめてから結果を出す
   // ------------------------------------------------------------
   function finishGame() {
-    phase = "finished";
     if (frameId !== undefined) cancelAnimationFrame(frameId);
     clearTimeout(flashTimer);
     flash = null;
+
+    // 最高スコアより高ければ保存して「NEW!」を出す
+    if (mode && level) {
+      isNewRecord = saveBestScore(mode.id, level.id, score);
+      bestScore = getBestScore(mode.id, level.id);
+    }
+    phase = "finished";
   }
 
   // ------------------------------------------------------------
@@ -216,7 +236,7 @@
   // 押したボタンの音名と、今の問題の音名が同じなら正解
   // （オクターブは見ない。ソ3 でも ソ5 でも「ソ」を押せば正解）
   // ------------------------------------------------------------
-  /** @param {import("../../../lib/notes.js").NoteButton} button 押されたボタンのデータ */
+  /** @param {import("../../../../lib/notes.js").NoteButton} button 押されたボタンのデータ */
   function handleAnswer(button) {
     // プレイ中でないとき・問題がまだ出ていないときは何もしない
     if (phase !== "playing" || !currentNote) return;
@@ -256,14 +276,17 @@
 </script>
 
 <svelte:head>
-  <title>{mode ? `${mode.title} | 音当て` : "音当て"}</title>
+  <title>{mode && level ? `${mode.title} ${level.label} | 音当て` : "音当て"}</title>
 </svelte:head>
 
-{#if mode}
+{#if mode && level}
   <main class="game">
-    <!-- ===== 上の帯：やめる・残り時間・スコア ===== -->
+    <!-- ===== 上の帯：やめる・モードとレベル・残り時間・スコア ===== -->
     <header class="status">
-      <a class="quit" href="/">← やめる</a>
+      <div class="quit-area">
+        <a class="quit" href="/">← やめる</a>
+        <span class="level-tag">{mode.title} {level.label}</span>
+      </div>
       <div class="status-item">
         <span class="status-label">残り</span>
         <!-- 残り5秒以下（プレイ中）は赤い文字にする -->
@@ -289,7 +312,16 @@
           <h2>おしまい！</h2>
           <!-- スコアはいちばん上に大きく出す -->
           <p class="result-score-label">スコア</p>
-          <p class="result-score">{score}</p>
+          <p class="result-score">
+            {score}
+            <!-- 新記録のときだけ「NEW!」の札を付ける -->
+            {#if isNewRecord}<span class="new-badge">NEW!</span>{/if}
+          </p>
+          <!-- そのレベルの最高スコア（記録がなければ「—」） -->
+          <p class="result-best">
+            {mode.title}
+            {level.label} の最高　<strong>{bestScore ?? "—"}</strong>
+          </p>
           <dl class="result-list">
             <div class="result-row">
               <dt>正解</dt>
@@ -371,7 +403,7 @@
 {:else}
   <!-- まちがった URL のとき -->
   <main class="not-found">
-    <p>このモードはありません。</p>
+    <p>このモード・レベルはありません。</p>
     <a href="/">ホームへ戻る</a>
   </main>
 {/if}
@@ -399,12 +431,28 @@
     gap: 16px;
     padding: 12px 16px;
   }
+  /* やめるリンクと、モード・レベルの札を縦に並べる */
+  .quit-area {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    /* 残り時間とスコアを右に寄せるため、この部分の右側を空ける */
+    margin-right: auto;
+  }
   .quit {
     color: var(--sub);
     text-decoration: none;
     font-size: 0.9rem;
-    /* 残り時間とスコアを右に寄せるため、やめるリンクの右側を空ける */
-    margin-right: auto;
+  }
+  /* 「読む Lv1」の札 */
+  .level-tag {
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 999px;
   }
   .status-item {
     display: flex;
@@ -617,12 +665,37 @@
     color: var(--sub);
   }
   .result-score {
-    margin: 0 0 12px;
+    position: relative; /* 「NEW!」の札をスコアの右上に置くための基準 */
+    margin: 0;
     font-size: 3.2rem;
     font-weight: bold;
     line-height: 1.1;
     color: var(--accent);
     font-variant-numeric: tabular-nums;
+  }
+
+  /* 「NEW!」の札：スコアの右上に、少し傾けて出す */
+  .new-badge {
+    position: absolute;
+    top: 0;
+    margin-left: 6px;
+    padding: 2px 8px;
+    font-size: 0.85rem;
+    color: #ffffff;
+    background: var(--ng);
+    border-radius: 999px;
+    transform: rotate(8deg);
+  }
+
+  /* そのレベルの最高スコア */
+  .result-best {
+    margin: 4px 0 12px;
+    font-size: 0.85rem;
+    color: var(--sub);
+  }
+  .result-best strong {
+    font-size: 1.05rem;
+    color: var(--ink);
   }
 
   /* 結果の一覧：左に項目名、右に数字 */

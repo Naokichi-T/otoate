@@ -3,7 +3,7 @@
 // 音当てアプリで使う「音」のデータをまとめたファイル
 // - 画面の下に並べる7つの答えのボタン（ド〜シ）
 // - 出題する音（ソ3〜ド6）のリストと、次の問題を選ぶ関数
-// - 遊び方（モード）の一覧
+// - 遊び方（モード）と、モードごとのレベルの一覧
 // ============================================================
 
 // モードのカードに出すアイコン（Svelte の部品）
@@ -31,6 +31,17 @@ import SpeakerIcon from "./icons/SpeakerIcon.svelte";
  * @property {string} title 画面に出す名前（"読む" など）
  * @property {string} desc  ホームに出す短い説明
  * @property {import("svelte").Component<{ size?: number }>} icon ホームのカードに出すアイコンの部品
+ * @property {Level[]} levels このモードのレベルの一覧（やさしい順）
+ */
+
+/**
+ * レベル1つ分のデータ
+ * @typedef {object} Level
+ * @property {number} id        レベルの番号（1、2、3）。URL にも使う（/play/read/1）
+ * @property {string} label     画面に出す名前（"Lv1" など）
+ * @property {string} desc      ホームの Lv ボタンに出す短い説明
+ * @property {QuizNote[]} notes このレベルで出題する音のリスト
+ * @property {boolean} reference 基準のラを鳴らすか（「聴く」で使う。ステップ6で音を鳴らす）
  */
 
 /**
@@ -117,6 +128,57 @@ function makeNoteRange(fromId, toId) {
 export const ALL_NOTES = makeNoteRange("G3", "C6");
 
 // ------------------------------------------------------------
+// pickNotes(ids)
+// "G3" のような音の名前のリストから、ALL_NOTES の中の音を取り出す関数
+// （とびとびの音を選びたいときに使う。例：「聴く」Lv1 の開放弦まわりの音）
+// ------------------------------------------------------------
+/**
+ * @param {string[]} ids 取り出したい音の名前のリスト
+ * @returns {QuizNote[]} 取り出した音のリスト（ids の順）
+ */
+function pickNotes(ids) {
+  return (
+    ids
+      .map((id) => ALL_NOTES.find((n) => n.id === id))
+      // 見つからなかった名前（undefined）は取りのぞく
+      // 「@type」は、取りのぞいたあとは QuizNote だけになることを VSCode に教えるための書き方
+      .filter(/** @type {(n: QuizNote | undefined) => n is QuizNote} */ ((n) => n !== undefined))
+  );
+}
+
+// ------------------------------------------------------------
+// READ_LEVELS
+// 「読む」モードのレベル
+//   Lv1 … 五線の中の音だけ（ミ4〜ファ5、9音：線の5音＋間の4音）
+//   Lv2 … 加線の音もあり（ソ3〜ド6、18音）
+// ------------------------------------------------------------
+/** @type {Level[]} */
+const READ_LEVELS = [
+  { id: 1, label: "Lv1", desc: "五線の中", notes: makeNoteRange("E4", "F5"), reference: false },
+  { id: 2, label: "Lv2", desc: "加線あり", notes: ALL_NOTES, reference: false },
+];
+
+// ------------------------------------------------------------
+// LISTEN_LEVELS
+// 「聴く」モードのレベル（音を鳴らすのはステップ6）
+//   Lv1 … 開放弦（ソ3・レ4・ラ4・ミ5）と、各弦の1つ上の音（ラ3・ミ4・シ4・ファ5）の8音、基準のラあり
+//   Lv2 … ソ3〜ド6 の全部、基準のラあり
+//   Lv3 … ソ3〜ド6 の全部、基準のラなし
+// ------------------------------------------------------------
+/** @type {Level[]} */
+const LISTEN_LEVELS = [
+  {
+    id: 1,
+    label: "Lv1",
+    desc: "開放弦まわり",
+    notes: pickNotes(["G3", "A3", "D4", "E4", "A4", "B4", "E5", "F5"]),
+    reference: true,
+  },
+  { id: 2, label: "Lv2", desc: "全部の音", notes: ALL_NOTES, reference: true },
+  { id: 3, label: "Lv3", desc: "基準なし", notes: ALL_NOTES, reference: false },
+];
+
+// ------------------------------------------------------------
 // pickNextNote(notes, prev, minDistance)
 // 次の問題の音を、リストの中からランダムに1つ選ぶ関数
 // 直前の音（prev）から minDistance 個以上はなれた音だけを選ぶ（白鍵で数える）
@@ -157,11 +219,12 @@ export function pickNextNote(notes, prev, minDistance = 1) {
 //   title : 画面に出す名前
 //   desc  : ホームに出す短い説明
 //   icon  : ホームのカードに出すアイコン（Svelte の部品をそのまま入れておく）
+//   levels: このモードのレベルの一覧
 // ------------------------------------------------------------
 /** @type {Mode[]} */
 export const MODES = [
-  { id: "read", title: "読む", desc: "五線譜の音符を見て答える", icon: NoteIcon },
-  { id: "listen", title: "聴く", desc: "鳴った音を聴いて答える", icon: SpeakerIcon },
+  { id: "read", title: "読む", desc: "五線譜の音符を見て答える", icon: NoteIcon, levels: READ_LEVELS },
+  { id: "listen", title: "聴く", desc: "鳴った音を聴いて答える", icon: SpeakerIcon, levels: LISTEN_LEVELS },
 ];
 
 // ------------------------------------------------------------
@@ -175,4 +238,18 @@ export const MODES = [
  */
 export function findMode(id) {
   return MODES.find((mode) => mode.id === id) ?? null;
+}
+
+// ------------------------------------------------------------
+// findLevel(mode, id)
+// モードの中から、URL のレベルの番号（"1" などの文字）に合うレベルを探して返す関数
+// 見つからないとき（/play/read/9 など）は null を返す
+// ------------------------------------------------------------
+/**
+ * @param {Mode} mode モードの情報
+ * @param {string | undefined} id URL から取ったレベルの番号（文字）
+ * @returns {Level | null} 見つかったレベル（見つからなければ null）
+ */
+export function findLevel(mode, id) {
+  return mode.levels.find((level) => String(level.id) === id) ?? null;
 }
