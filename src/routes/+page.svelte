@@ -13,7 +13,7 @@
   <!-- アプリの名前 -->
   <header class="title-area">
     <h1>音当て</h1>
-    <p class="lead">30秒で何問わかるかな？</p>
+    <p class="lead">1分で何問わかるかな？</p>
   </header>
 
   <!-- モードを選ぶカード（MODES の数だけ並べる） -->
