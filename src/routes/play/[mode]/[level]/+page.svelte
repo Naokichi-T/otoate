@@ -3,7 +3,7 @@
 	URL の「/play/モード/レベル」でモードとレベルが決まる
 	  /play/read/1   … 「読む」Lv1（五線の中の音）
 	  /play/read/2   … 「読む」Lv2（加線の音もあり）
-	  /play/listen/1 … 「聴く」Lv1〜3（音を鳴らすのはステップ6）
+	  /play/listen/1 … 「聴く」Lv1〜3（Lv1・Lv2 は基準のラあり、Lv3 はなし）
 
 	画面の並び
 	- 上：やめるリンク・残り時間・スコア
@@ -27,6 +27,13 @@
 	- 反応時間 ＝ 問題が出てから正解を押すまで（お手つきで迷った時間も含む）
 	- 結果のカードに、スコア・最高スコア・正解の数・平均反応速度・お手つきの数を出す
 	- 最高スコアを超えたら保存して「NEW!」を出す（保存のしかたは src/lib/best.js）
+
+	「聴く」モードの音（鳴らし方は src/lib/sound.js）
+	- 「スタート」を押したときに音を出す準備をする（スマホは画面を触らないと音を出せないため）
+	- Lv1・Lv2 は、カウントの「3」で基準のラ（ラ4）を1回鳴らす。1問目はラ4 にしない
+	- 問題が出るたびに、その音を鳴らす（5秒ゲージは鳴り始めと同時に減り始める）
+	- 「もう一度」で問題の音を、「基準のラ」でラ4 を鳴らす（ゲージは戻らない）
+	- そのレベルで出ない音名のボタン（Lv1 のド）はグレーにして押せない
 -->
 <script>
   import { onMount } from "svelte";
@@ -36,6 +43,7 @@
   import Staff from "../../../../lib/Staff.svelte";
   import SpeakerIcon from "../../../../lib/icons/SpeakerIcon.svelte";
   import { THINK_SECONDS, calcPoints, averageSeconds, formatSeconds } from "../../../../lib/score.js";
+  import { unlockAudio, playNote, playReference, stopTone } from "../../../../lib/sound.js";
 
   // ------------------------------------------------------------
   // 時間の決まり
@@ -59,6 +67,16 @@
   // URL の [level] の部分から、今のレベルの情報を探す
   // モードがまちがっているとき・レベルがまちがっているとき（/play/read/9 など）は null になる
   let level = $derived(mode ? findLevel(mode, page.params.level) : null);
+
+  // 今のモードが「聴く」か（音を鳴らすかどうかの判断に使う）
+  let isListen = $derived(mode?.id === "listen");
+
+  // 基準のラを使うレベルか（「聴く」Lv1・Lv2 は true、Lv3 と「読む」は false）
+  let useReference = $derived(isListen && (level?.reference ?? false));
+
+  // このレベルで出題される音名（"C" など）の一覧
+  // 答えのボタンのうち、ここに入っていない音名（「聴く」Lv1 のド）はグレーにして押せないようにする
+  let usedLetters = $derived(new Set((level?.notes ?? []).map((n) => n.letter)));
 
   // 最高スコア（結果のカードに出す）と、今回が新記録だったか
   /** @type {number | null} */
@@ -125,14 +143,25 @@
 
   // ------------------------------------------------------------
   // nextQuestion()
-  // 次の問題の音を選んで画面に出し、5秒ゲージを満タンに戻す関数
+  // 次の問題の音を選んで画面に出し（「聴く」なら鳴らし）、5秒ゲージを満タンに戻す関数
   // 「読む」では、直前の音と1音差の音も出さない
   // ------------------------------------------------------------
   function nextQuestion() {
     const minDistance = mode?.id === "read" ? READ_MIN_DISTANCE : LISTEN_MIN_DISTANCE;
+
     // 出題する音は、レベルごとに決まっている（例：「読む」Lv1 は五線の中の9音）
-    currentNote = pickNextNote(level?.notes ?? [], currentNote, minDistance);
+    let notes = level?.notes ?? [];
+
+    // 基準のラを鳴らしたあとの1問目は、ラ4 を出さない（基準と同じ音だとすぐわかってしまうため）
+    if (useReference && currentNote === null) {
+      notes = notes.filter((n) => n.id !== "A4");
+    }
+
+    currentNote = pickNextNote(notes, currentNote, minDistance);
     questionStartedAt = performance.now();
+
+    // 「聴く」なら、問題の音を鳴らす
+    if (isListen && currentNote) playNote(currentNote);
   }
 
   // ------------------------------------------------------------
@@ -149,8 +178,15 @@
     currentNote = null;
     isNewRecord = false;
 
+    // 音を出す準備（スマホは、ボタンを押したこの瞬間に準備しないと音が出ない）
+    if (isListen) unlockAudio();
+
     phase = "countdown";
     countdown = COUNTDOWN_FROM;
+
+    // 基準のラを使うレベルなら、カウントの「3」と同時に鳴らす
+    if (useReference) playReference();
+
     tickCountdown();
   }
 
@@ -204,6 +240,7 @@
     if (frameId !== undefined) cancelAnimationFrame(frameId);
     clearTimeout(flashTimer);
     flash = null;
+    stopTone(); // 鳴っている音があれば止める
 
     // 最高スコアより高ければ保存して「NEW!」を出す
     if (mode && level) {
@@ -259,10 +296,19 @@
   // ------------------------------------------------------------
   // handleReplay()
   // 「聴く」モードの「もう一度」ボタンが押されたときに呼ばれる関数
-  // ステップ6で、ここに音を鳴らす処理を入れる（今は何もしない）
+  // 今の問題の音をもう一度鳴らす（5秒ゲージは戻らない）
   // ------------------------------------------------------------
   function handleReplay() {
-    // まだ何もしない
+    if (phase === "playing" && currentNote) playNote(currentNote);
+  }
+
+  // ------------------------------------------------------------
+  // handleReference()
+  // 「基準のラ」ボタンが押されたときに呼ばれる関数
+  // ラ4（442Hz）を鳴らす（5秒ゲージは戻らない）
+  // ------------------------------------------------------------
+  function handleReference() {
+    if (phase === "playing") playReference();
   }
 
   // 画面を離れるときに、動いているタイマーや時計をすべて止める
@@ -271,6 +317,7 @@
       clearTimeout(flashTimer);
       clearTimeout(countdownTimer);
       if (frameId !== undefined) cancelAnimationFrame(frameId);
+      stopTone(); // 鳴っている音があれば止める（やめるでホームに戻ったときなど）
     };
   });
 </script>
@@ -367,12 +414,19 @@
             {#key countdown}
               <p class="countdown">{countdown}</p>
             {/key}
-          {:else if mode.id === "listen"}
-            <!-- 「聴く」のプレイ中：もう一度鳴らすボタン -->
-            <button class="replay" type="button" onclick={handleReplay}>
-              <SpeakerIcon size={26} />
-              <span>もう一度</span>
-            </button>
+          {:else if isListen}
+            <!-- 「聴く」のプレイ中：左に「基準のラ」（Lv1・Lv2 だけ）、右に「もう一度」 -->
+            <div class="listen-buttons">
+              {#if useReference}
+                <button class="replay reference" type="button" onclick={handleReference}>
+                  <span>基準のラ</span>
+                </button>
+              {/if}
+              <button class="replay" type="button" onclick={handleReplay}>
+                <SpeakerIcon size={26} />
+                <span>もう一度</span>
+              </button>
+            </div>
           {/if}
         </div>
       </section>
@@ -384,13 +438,15 @@
 						光らせているボタンには、ok（緑）か ng（赤）のクラスを付ける
 						class:ok={条件} … 条件が true のときだけ「ok」というクラスが付く
 						disabled … プレイ中以外は押せない（見た目はそのまま）
+						unused   … このレベルで出ない音名（「聴く」Lv1 のド）は、いつもグレーで押せない
 					-->
           <button
             class="answer"
             class:ok={flash?.id === button.id && flash?.kind === "ok"}
             class:ng={flash?.id === button.id && flash?.kind === "ng"}
+            class:unused={!usedLetters.has(button.id)}
             type="button"
-            disabled={phase !== "playing"}
+            disabled={phase !== "playing" || !usedLetters.has(button.id)}
             onclick={() => handleAnswer(button)}
           >
             <span class="answer-name">{button.name}</span>
@@ -552,6 +608,18 @@
     }
   }
 
+  /* 「基準のラ」と「もう一度」を横に並べる */
+  .listen-buttons {
+    display: flex;
+    gap: 12px;
+  }
+
+  /* 「基準のラ」ボタン：「もう一度」と同じ形で、少し控えめ（文字を薄く） */
+  .replay.reference {
+    padding: 16px 24px;
+    color: var(--sub);
+  }
+
   /* 「🔈 もう一度」ボタン */
   .replay {
     /* アイコンと文字を横に並べる */
@@ -603,6 +671,14 @@
   .answer:disabled {
     color: inherit;
     opacity: 1;
+  }
+  /* このレベルで出ない音名のボタン：グレーにして、押せないことがわかるようにする */
+  .answer.unused,
+  .answer.unused:disabled {
+    background: var(--line);
+    color: var(--sub);
+    box-shadow: none;
+    opacity: 0.6;
   }
   /* 押している間は少し下に沈んだように見せる（押せるときだけ） */
   .answer:not(:disabled):active {
