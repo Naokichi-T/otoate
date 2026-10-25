@@ -18,6 +18,7 @@ const VOLUME = 0.25; // 音の大きさ（0〜1。大きすぎると音が割れ
 const ATTACK_SECONDS = 0.02; // 鳴り始めに音量を上げる時間（いきなり鳴らすと「プツッ」と雑音が出るため）
 const FILTER_FREQUENCY = 2000; // これより高い成分をけずって、やわらかい音にする（Hz）
 const STOP_FADE_SECONDS = 0.03; // 前の音を止めるときに音量を下げる時間
+const RELEASE_SECONDS = 0.08; // 鳴り終わりに音量を下げる時間（いきなり切ると「プツッ」と雑音が出るため）
 
 // ------------------------------------------------------------
 // FIFTHS_FROM_A
@@ -104,7 +105,9 @@ export function stopTone() {
 // ------------------------------------------------------------
 // playFrequency(frequency)
 // 周波数を指定して、1つの音を鳴らす関数（前の音は止める）
-// 音量は、鳴り始めにすっと上がり、そのあと TONE_SECONDS 秒かけてだんだん小さくなる
+// 音量は、鳴り始めにすっと上がり、TONE_SECONDS 秒のあいだ同じ大きさのまま鳴り続け、
+// 最後の一瞬（RELEASE_SECONDS）だけ下げて止める
+// （だんだん小さくすると、スマホの音量が小さいときに後半が聞こえなくなるため）
 // ------------------------------------------------------------
 /**
  * @param {number} frequency 鳴らす音の周波数（Hz）
@@ -126,12 +129,15 @@ export function playFrequency(frequency) {
   filter.type = "lowpass";
   filter.frequency.value = FILTER_FREQUENCY;
 
-  // 音量：0 → VOLUME まで ATTACK_SECONDS で上げ、そのあと TONE_SECONDS の終わりまでに小さくする
-  // （exponentialRamp は 0 にできないので、ほとんど聞こえない 0.0001 まで下げる）
+  // 音量の変化
+  //   0 秒 … 0 から VOLUME まで ATTACK_SECONDS で上げる
+  //   そのあと … VOLUME のまま（同じ大きさで鳴り続ける）
+  //   終わりの RELEASE_SECONDS … VOLUME から 0 まで下げる
   const gain = audioContext.createGain();
   gain.gain.setValueAtTime(0, now);
   gain.gain.linearRampToValueAtTime(VOLUME, now + ATTACK_SECONDS);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + TONE_SECONDS);
+  gain.gain.setValueAtTime(VOLUME, now + TONE_SECONDS - RELEASE_SECONDS);
+  gain.gain.linearRampToValueAtTime(0, now + TONE_SECONDS);
 
   // つなぐ：発振器 → フィルター → 音量 → スピーカー
   oscillator.connect(filter);
