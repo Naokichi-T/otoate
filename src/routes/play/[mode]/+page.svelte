@@ -13,12 +13,16 @@
 <script>
   import { page } from "$app/state";
   import { NOTE_BUTTONS, findMode } from "../../../lib/notes.js";
+  import SpeakerIcon from "../../../lib/icons/SpeakerIcon.svelte";
 
   // URL の [mode] の部分から、今のモードの情報を探す
   // まちがった URL（/play/abc など）のときは null になる
   let mode = $derived(findMode(page.params.mode));
 
   // 最後に押したボタン（ボタンが反応しているかを確かめるための仮の表示）
+  // 最初は null（まだ何も押していない）。押すと NoteButton のデータが入る
+  // 「@type」で入るデータの形を VSCode に教えておく（書かないと赤い波線が出る）
+  /** @type {import("../../../lib/notes.js").NoteButton | null} */
   let lastPressed = $state(null);
 
   // ------------------------------------------------------------
@@ -27,6 +31,7 @@
   // ステップ1では、押したボタンを覚えて画面に出すだけ
   // （ステップ2で、ここに正解・お手つきの判定を入れる）
   // ------------------------------------------------------------
+  /** @param {import("../../../lib/notes.js").NoteButton} button 押されたボタンのデータ */
   function handleAnswer(button) {
     lastPressed = button;
   }
@@ -72,7 +77,10 @@
         <div class="staff-placeholder">（ここに五線譜と音符）</div>
       {:else}
         <!-- 「聴く」：もう一度鳴らすボタン -->
-        <button class="replay" type="button" onclick={handleReplay}> 🔈 もう一度 </button>
+        <button class="replay" type="button" onclick={handleReplay}>
+          <SpeakerIcon size={26} />
+          <span>もう一度</span>
+        </button>
       {/if}
 
       <!-- 押したボタンの確認用（ステップ2で消す） -->
@@ -190,6 +198,10 @@
 
   /* 「🔈 もう一度」ボタン */
   .replay {
+    /* アイコンと文字を横に並べる */
+    display: flex;
+    align-items: center;
+    gap: 10px;
     padding: 16px 32px;
     font-size: 1.3rem;
     background: var(--panel);
@@ -197,6 +209,10 @@
     border-radius: 999px;
     color: inherit;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  }
+  /* アイコンだけアクセントのオレンジにする（文字はふつうの色のまま） */
+  .replay :global(svg) {
+    color: var(--accent);
   }
   .replay:active {
     transform: scale(0.96);

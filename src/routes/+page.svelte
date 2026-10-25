@@ -20,7 +20,8 @@
   <nav class="modes">
     {#each MODES as mode (mode.id)}
       <a class="mode-card" href={`/play/${mode.id}`}>
-        <span class="icon">{mode.icon}</span>
+        <!-- アイコン（mode.icon に入っている部品をそのまま表示する） -->
+        <span class="icon"><mode.icon size={44} /></span>
         <span class="text">
           <span class="mode-title">{mode.title}</span>
           <span class="mode-desc">{mode.desc}</span>
@@ -86,8 +87,13 @@
     transform: scale(0.98);
   }
 
+  /* アイコン：アクセントのオレンジ（アイコンは color の色になる） */
   .icon {
-    font-size: 2.2rem;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
   }
 
   /* 名前と説明を縦に並べ、残りの幅をいっぱいに使う */
