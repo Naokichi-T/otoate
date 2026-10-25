@@ -117,18 +117,34 @@ function makeNoteRange(fromId, toId) {
 export const ALL_NOTES = makeNoteRange("G3", "C6");
 
 // ------------------------------------------------------------
-// pickNextNote(notes, prev)
+// pickNextNote(notes, prev, minDistance)
 // 次の問題の音を、リストの中からランダムに1つ選ぶ関数
-// 直前と同じ音（prev）は選ばない（同じ音が続くと押しまちがいに見えるため）
+// 直前の音（prev）から minDistance 個以上はなれた音だけを選ぶ（白鍵で数える）
+//   minDistance = 1 … 直前と同じ音だけ出さない（となりの音は出る）
+//   minDistance = 2 … 直前と同じ音と、そのとなり（1音差）の音を出さない
+//                     例：直前がミ4 なら、レ4・ミ4・ファ4 は出ない
+// （同じ音が続くと押しまちがいに見え、1音差だと五線譜の上で場所がほとんど変わらず簡単になるため）
 // ------------------------------------------------------------
 /**
  * @param {QuizNote[]} notes 選ぶもとになる音のリスト
  * @param {QuizNote | null} prev 直前の問題の音（最初の問題なら null）
+ * @param {number} [minDistance] 直前の音から何個以上はなれた音を選ぶか（指定しなければ 1）
  * @returns {QuizNote} 選んだ音
  */
-export function pickNextNote(notes, prev) {
-  // 直前の音を取りのぞいた候補（音が1つしかないときは、そのまま全部）
-  const candidates = notes.length > 1 ? notes.filter((n) => n.id !== prev?.id) : notes;
+export function pickNextNote(notes, prev, minDistance = 1) {
+  // 直前の音から minDistance 個以上はなれた音だけを候補にする
+  // Math.abs(…) … 差の大きさ（上でも下でも同じように数えるため、マイナスを取る）
+  let candidates = notes.filter((n) => !prev || Math.abs(n.step - prev.step) >= minDistance);
+
+  // 候補が1つもないとき（音の数が少ないときなど）は、直前と同じ音だけ取りのぞく
+  if (candidates.length === 0) {
+    candidates = notes.filter((n) => n.id !== prev?.id);
+  }
+  // それでも空なら（音が1つしかないとき）、全部から選ぶ
+  if (candidates.length === 0) {
+    candidates = notes;
+  }
+
   // 0 〜 候補の数−1 のどれかの番号をランダムに選ぶ
   const index = Math.floor(Math.random() * candidates.length);
   return candidates[index];

@@ -43,6 +43,12 @@
   const WARNING_SECONDS = 5; // 残り時間がこの秒数以下になったら赤い文字にする
   const FLASH_MS = 200; // ボタンが緑・赤に光っている時間（ミリ秒）
 
+  // 次の問題を、直前の音から白鍵でいくつ以上はなした音にするか
+  //   「読む」… 2（同じ音と1音差の音は出さない。五線譜の上で場所がほとんど変わらず簡単になるため）
+  //   「聴く」… 1（同じ音だけ出さない。ステップ6で考え直すかも）
+  const READ_MIN_DISTANCE = 2;
+  const LISTEN_MIN_DISTANCE = 1;
+
   // URL の [mode] の部分から、今のモードの情報を探す
   // まちがった URL（/play/abc など）のときは null になる
   let mode = $derived(findMode(page.params.mode));
@@ -108,9 +114,11 @@
   // ------------------------------------------------------------
   // nextQuestion()
   // 次の問題の音を選んで画面に出し、5秒ゲージを満タンに戻す関数
+  // 「読む」では、直前の音と1音差の音も出さない
   // ------------------------------------------------------------
   function nextQuestion() {
-    currentNote = pickNextNote(ALL_NOTES, currentNote);
+    const minDistance = mode?.id === "read" ? READ_MIN_DISTANCE : LISTEN_MIN_DISTANCE;
+    currentNote = pickNextNote(ALL_NOTES, currentNote, minDistance);
     questionStartedAt = performance.now();
   }
 
