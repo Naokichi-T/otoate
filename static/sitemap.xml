@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	音当て（otoate）のサイトマップ
+	検索エンジンに知らせたいページの一覧（検索に載せるのはホームだけ）
+	lastmod … 最後に中身を変えた日。ホームを大きく変えたら日付を書き換える
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+	<url>
+		<loc>https://otoate.vercel.app/</loc>
+		<lastmod>2026-10-26</lastmod>
+	</url>
+</urlset>

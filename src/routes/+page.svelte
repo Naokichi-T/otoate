@@ -5,6 +5,7 @@
 	- 「読む」「聴く」のモードのカード
 	- カードの中に、レベルのボタン（Lv1・Lv2…）と、そのレベルの最高スコア
 	  ボタンを押すと、そのモード・レベルのゲーム画面（/play/read/1 など）へ
+	- 検索結果とOGP（URL を送ったときのカード）の情報（検索に載せるのはこのページだけ）
 -->
 <script>
   import { onMount } from "svelte";
@@ -33,7 +34,44 @@
     const value = bestScores[`${modeId}-${levelId}`];
     return typeof value === "number" ? String(value) : "—";
   }
+
+  // ------------------------------------------------------------
+  // 検索結果や、URL を送ったときの表示（OGP）に使う情報
+  // ------------------------------------------------------------
+  const SITE_URL = "https://otoate.vercel.app/"; // 公開している URL
+  const TITLE = "音当て｜バイオリンのための音当てゲーム"; // ブラウザのタブや検索結果のタイトル
+  const DESCRIPTION =
+    "五線譜の音符を読んだり、鳴った音を聴いたりして、ドレミで答える音当てゲーム。1分間でどれだけ当てられるか挑戦できます。バイオリンの開放弦（ソ・レ・ラ・ミ）を基準にした聴き取りの練習にも。";
+  const OG_IMAGE = `${SITE_URL}og-image.png`; // URL を送ったときに出る画像（1200×630）
 </script>
+
+<!--
+	ホームの head（検索とOGPの情報）
+	- title / description … 検索結果に出るタイトルと説明文
+	- canonical … このページの正式な URL（同じページがいくつもの URL で見えるときに、どれが正しいか伝える）
+	- og:〜 … LINE や Facebook などで URL を送ったときに出るカードの情報
+	- twitter:〜 … X（旧 Twitter）で URL を送ったときに出るカードの情報
+-->
+<svelte:head>
+  <title>{TITLE}</title>
+  <meta name="description" content={DESCRIPTION} />
+  <link rel="canonical" href={SITE_URL} />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content={SITE_URL} />
+  <meta property="og:title" content={TITLE} />
+  <meta property="og:description" content={DESCRIPTION} />
+  <meta property="og:image" content={OG_IMAGE} />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:site_name" content="音当て" />
+  <meta property="og:locale" content="ja_JP" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content={TITLE} />
+  <meta name="twitter:description" content={DESCRIPTION} />
+  <meta name="twitter:image" content={OG_IMAGE} />
+</svelte:head>
 
 <main class="home">
   <!-- アプリの名前 -->

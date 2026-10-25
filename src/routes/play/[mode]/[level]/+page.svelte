@@ -324,6 +324,8 @@
 
 <svelte:head>
   <title>{mode && level ? `${mode.title} ${level.label} | 音当て` : "音当て"}</title>
+  <!-- ゲーム画面は検索結果に出さない（検索に載せるのはホームだけ） -->
+  <meta name="robots" content="noindex" />
 </svelte:head>
 
 {#if mode && level}

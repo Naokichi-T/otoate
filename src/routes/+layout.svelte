@@ -1,21 +1,26 @@
 <!--
 	+layout.svelte
 	すべてのページに共通する外枠
-	- ファビコン（ステップ7で音当て用の画像に差し替える）
+	- ファビコン（ブラウザのタブのアイコン）とホーム画面用の画像（apple-touch-icon）
 	- 楽譜用フォント Bravura の読み込み（五線譜のト音記号と音符に使う）
 	- アプリ全体の色・文字・余白の決まり（CSS）
 -->
 <script>
-  // ファビコンの画像（今はプロジェクト作成時のままの Svelte のロゴ）
-  // どのバージョンの SvelteKit でも動くように、相対パスで読み込む
-  import favicon from "../lib/assets/favicon.svg";
-
   // 各ページの中身（+page.svelte）を受け取る
   let { children } = $props();
 </script>
 
 <svelte:head>
-  <link rel="icon" href={favicon} />
+  <!--
+		ファビコン（static フォルダの画像。オレンジの角丸四角に白い音符）
+		SVG に対応したブラウザは favicon.svg を、対応していないブラウザは favicon.png（32×32）を使う
+	-->
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32" />
+  <!-- iPhone の「ホーム画面に追加」で使うアイコン（180×180。角は iPhone が自動で丸める） -->
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <!-- スマホのブラウザの上の帯の色（アプリの背景と同じ色） -->
+  <meta name="theme-color" content="#f6f4ef" />
   <!--
 		楽譜用フォントを先に読み込み始めておく（preload）
 		五線譜を表示したときに、ト音記号が一瞬「□」になるのを防ぐため
